@@ -5,7 +5,7 @@ rstan_options(auto_write = TRUE)
 options(mc.cores = 1)
 
 
-#### Setting raandom seed
+#### Setting random seed
 nrep <- 1
 seed <- 1
 batch <- 1

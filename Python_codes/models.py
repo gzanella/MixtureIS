@@ -6,7 +6,7 @@ import numpy as np
 from scipy.stats import laplace, bernoulli, multivariate_normal
 from scipy.special import logsumexp
 import sys
-sys.path.insert(1, "./PSIS/py/")
+sys.path.insert(1, "./PSIS/py/")      ##########Put here path to your PSIS folder ###########
 import psis
 
 

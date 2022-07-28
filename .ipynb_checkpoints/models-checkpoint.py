@@ -1,32 +1,17 @@
 ## We want to try to implement in the more efficient way suggested by CAICAI. Everything that it is NOT model specific will be 
 ## putted in a super-class (parent-class) with respect to the models themselves. While everything which is model specific will be made a method of the model themselves
-from abc import ABC, abstractmethod
+
 import pandas as pd
 import numpy as np
 from scipy.stats import laplace, bernoulli, multivariate_normal
 from scipy.special import logsumexp
-import sys
-sys.path.insert(1, "./PSIS/py/")
-import psis
 
 
 class Is_estimators:
     def __init__(self, model):
         self.model=model
 
-    @property
-    def model(self):
-        return self.__model
-    
-    @model.setter
-    def model(self, value):
-        self.__model = value
-        return 
-        
-
     def mixture(self, samples_mix):
-        """This function computes the estimates of the different lppd terms given by the mixture estimator.
-        Care should be taken that the function supposes that samples_mix has dimensions equal to: [p, n_samples]"""
         log_lik = self.model.lmodel(samples_mix).transpose()
         lcommon_mix = logsumexp(-log_lik, axis=1)
         log_weights = -log_lik.transpose() - lcommon_mix.reshape((1,len(lcommon_mix)))
@@ -34,43 +19,26 @@ class Is_estimators:
         return lppd_mix
     
     def posterior(self, samples_post):
-        """This function computes the estimates of the different lppd terms given by the posterior estimator.
-        Care should be taken that the function supposes that samples_post has dimensions equal to: [p, n_samples]"""
         log_lik = self.model.lmodel(samples_post).transpose()
         n_samples = samples_post.shape[1]
         lppd_post = np.log(n_samples) - logsumexp(-log_lik, axis=0)
         return lppd_post
 
     def PSIS(self, samples_post):
-        """This function computes the estimates of the different lppd terms given by the PSIS estimator.
-        Care should be taken that the function supposes that samples_post has dimensions equal to: [p, n_samples]"""
         log_lik = self.model.lmodel(samples_post).transpose()
         loo, lppd_psis, k_psis=psis.psisloo(log_lik)
         return lppd_psis
 
 
 ## Now i create the model class, this will encompass both the logistic and gaussian model
-class Model(ABC):
+class Model:
     def __init__(self, y, X):
         ##theser are common to all models....
         self.y = y
         self.X = X
         self.n = X.shape[0]
         self.p = X.shape[1]
-
-    ## A decorator is a function that receives in input a function, and returns a function
-    @abstractmethod
-    def lmodel(self, theta):
-        pass
-    
-    @abstractmethod
-    def lmodel_i(self, theta, i):
-        pass
-
-    ##This parent module is more an interface, it will put every function that should be implemented in the submodule
-    #def lmodel(self, theta):
-    #    raise NotImplementedError("In order to implement any of the estimators, you have to implement this function in it's specific model-dependent subclass. It should return the [n,1] vector of log-probabilities at the points given by y. Possibly try  to implement them in a numerically-stable way to avoid overflow during the estimation")
-    
+ 
 
 class Gaussian_Model(Model):
     def __init__(self, y, X, theta_0, sigma_0, var):
@@ -79,72 +47,30 @@ class Gaussian_Model(Model):
         self.sigma = sigma_0          ## prior covariance
         self.var = var                ## Gaussian model variance
 
-    #def __str__(self):
-    #    return """Bayesian regression model with known model variance.\n\t\t y[i]|X[i],\u03B8 ~ N(X[i]*\u03B8, \u03C3^2)
-    #    \n\t\t\t \u03B8 ~ N(\u03B8_0, \u03A3_0),\n where \u03B8_0 is model.theta_0, \u03A3_0 is model.sigma_0 and is model.var."""
-
-    @property
-    def theta_0(self):
-        return self.__theta_0
-
-    @theta_0.setter
-    def theta_0(self, value):
-        self.__theta_0 = value
-        return
-    
-    @property
-    def sigma_0(self):
-        return self.__sigma_0
-    
-    @sigma_0.setter
-    def sigma_0(self, value):
-        if (np.linalg.eigvals(value) <= 0).any():
-            raise ValueError("The Gaussian's prior covariance matrix should be positive definite")
-        else:
-            self.__sigma_0=value
-
-    @property
-    def var(self):
-        return self.__var
-    
-    @var.setter
-    def var(self, value):
-        if value <= 0:
-            raise ValueError("The model's variance in the Gaussian model has to be positive")
-        else:
-            self.__var = value
-
-    
-
 
     def model_i(self, theta, i):
-        """ This function calculates the pdf of the Gaussian model for a given parameter value theta
+        """ This function calculates the pdf of the Gaussian model for a given parameter values theta
         and at a given observation y[i]"""
         mean = np.dot(self.X[i,::], theta).reshape(1,)
         return multivariate_normal(mean = mean, cov = self.var).pdf(self.y[i])
 
     def model(self,theta):
-        """ This function calculates the pdfs of the Gaussian model for a given parameter value theta
-        at the different values given by the observations y. Notice that it is not calculating the pdf
-        of the full sample y, rather the n pdfs given by the different observations"""
-        #mean=np.dot(self.X, theta)
-        #return multivariate_normal(mean = mean.flatten(),cov = self.var*np.eye((self.n))).pdf(self.y)
-        return np.exp(self.lmodel(theta))
+        """ This function calculates the pdf of the Gaussian model for a given parameter values theta
+        and at a given observation y[i]"""
+        mean=np.dot(self.X, theta)
+        return multivariate_normal(mean = mean.flatten(),cov = self.var*np.eye((self.n))).pdf(self.y)
 
     def lmodel_i(self, theta, i):
-        """This function calculates the log-density of the observation y[i] for the model with parameter
+        """This function calculation the log-density of the observation y[i] for the model with parameter
         values equal to theta. Note that this function requires that the X matrix has already the column
-        of ones to account for the intercept, which will be the first element of the vector theta. """
+        of ones to account for the intercept, which will be the first element of the vector beta. """
         return -0.5*np.log(2*np.pi*self.var)-0.5/self.var*((self.y[i]-np.dot(self.X[i,::], theta))**2)
     
 
     def lmodel(self, theta):
-        """This function calculates the log-densities of the full sample for the model with parameter values 
+        """This function calculates the log-density of the full sample for the model with parameter values 
         equal to theta. Note that this function requires that the X matrix has already the column
         of ones to account for the intercept, which will be the first element of the vector beta."""
-        if theta.ndim == 1:
-            theta=theta.reshape((self.p, 1))
-        
         return -1/2*np.log(2*np.pi*self.var)-0.5/self.var*((self.y.reshape((self.n,1))-np.dot(self.X, theta))**2)
 
     def cond_theta(self):
@@ -159,7 +85,6 @@ class Gaussian_Model(Model):
         return multivariate_normal(mean=mean, cov=variance)
 
     def prior(self, theta):
-        """This function return the value of the prior at a given value of the parameter theta"""
         pp=multivariate_normal(mean=self.theta_0.reshape(self.p), cov=self.sigma).pdf(theta)
         return pp
 
@@ -223,54 +148,25 @@ class Gaussian_Model(Model):
                 
         return coefficient[0,0]+exponent[0,0]
 
-    def correct_values(self):
-        """This function returns the correct values for the different lppd terms"""
-        return np.array([self.log_predictive_i(k) for k in range(self.n)])
-
-
 
 class Logistic_Model(Model):
-    def __init__(self, y, X, mu, beta):
+    def __init__(self, y, X, mu, b):
         super().__init__(y, X)
-        self.mu = mu                  ## location and scale of the double Exponential prior distribution
-        self.beta = beta       
-                                       
-    @property
-    def mu(self):
-        return self.__mu
+        self.mu = mu                  
+        self.b = b              ## location and scale of the double Exponential prior distribution
 
-    @mu.setter
-    def mu(self, value):
-        self.__mu = value
-
-    @property
-    def beta(self):
-        return self.__beta
-    
-    @beta.setter
-    def beta(self, value):
-        if value <= 0:
-            raise ValueError("The prior's Laplace scale parameter has to be positive")
-        else:
-            self.__beta = value
-    
     def prior(self, beta):
         '''This function computes the pdf of the prior at a given value beta'''
         partial=1
         for bj in b:
-            partial=laplace.pdf(bj,loc=self.mu,scale=self.beta)*partial
+            partial=laplace.pdf(bj,loc=self.mu,scale=self.b)*partial
         return partial
 
     def model_i(self, beta, i):
-        """ This function calculates the pmf of the Logistic model for a given parameter value beta
-        and at a given observation y[i]"""
-        return np.exp(self.lmodel_i(beta, i))
+        np.exp(self.lmodel_i(self, beta, i))
 
     def model(beta):
-        """ This function calculates the pmfs of the Logistic model for a given parameter value beta
-        at the different values given by the observations y. Notice that it is not calculating the pmf
-        of the full sample y, rather the n pmfs given by the different observations"""
-        return np.exp(self.lmodel(beta))
+        np.exp(self.lmodel(self, beta))
 
 
     def lmodel_i(self, beta, i):
@@ -280,85 +176,83 @@ class Logistic_Model(Model):
         return mu*self.y[i] - logsumexp(np.array([zeros, mu]), axis=0)
 
     def lmodel(self, beta):
-        """This function calculates the logarithms of the pmfs for the Logistic model with parameter values 
-        equal to beta. Note that this function requires that the X matrix has already the column
-        of ones to account for the intercept, which will be the first element of the vector beta."""
         mu=np.dot(self.X, beta)
         zeros = np.zeros(mu.shape)
         return mu*self.y.reshape((self.n,1)) - logsumexp(np.array([zeros, mu]), axis=0)
 
-    def str_post(self):
-        """This function creates the string with which we create the model in PyStan, and hence sample from the posterior distribution"""
-        model_posterior="""
-        data
+
+
+
+## These are just the strings to create the model block of PyStan
+def posterior():
+    model_posterior="""
+    data
+    {
+        int n;
+        int k;
+        int<lower=0, upper=1> y[n];
+        matrix [n,k] X;
+        real scaled_var;
+        
+    }
+
+    parameters
+    {
+        vector[k] beta;
+    }
+
+
+    model
+    {
+        beta ~ double_exponential(0,scaled_var);
+        y ~ bernoulli_logit(X*beta);
+        
+    }
+    """
+    return model_posterior
+
+def mixture():
+    model_mixture="""
+    functions
+    {
+        real mixture_lpmf(int[] y, matrix X, int n, int k, vector beta, real scaled_var)
         {
-            int n;
-            int k;
-            int<lower=0, upper=1> y[n];
-            matrix [n,k] X;
-            real scaled_var;
-            
+        real log_full_model= 0.0;
+        real log_prior = 0.0;
+        vector[n] contributions;
+        vector[n] means;
+        means = X*beta;
+        
+        for (index in 1:n)
+        {
+            contributions[index]= -1*(bernoulli_logit_lpmf(y[index] | means[index]));
         }
 
-        parameters
-        {
-            vector[k] beta;
+        log_full_model = bernoulli_logit_lpmf(y | means);
+        log_prior = double_exponential_lpdf(beta | 0, scaled_var);
+        return (log_sum_exp(contributions) + log_prior + log_full_model);
         }
+    }
 
+    data
+    {
+        int n;
+        int k;
+        int<lower=0, upper=1> y[n];
+        matrix [n,k] X;
+        real scaled_var;
+        
+    }
 
-        model
-        {
-            beta ~ double_exponential(0,scaled_var);
-            y ~ bernoulli_logit(X*beta);
-            
-        }
-        """
-        return model_posterior
+    parameters
+    {
+        vector[k] beta;
+    }
 
-    def str_mix(self):
-        """This function creates the string with which we can sample from our mixture distribution in PyStan"""
-        model_mixture="""
-        functions
-        {
-            real mixture_lpmf(int[] y, matrix X, int n, int k, vector beta, real scaled_var)
-            {
-            real log_full_model= 0.0;
-            real log_prior = 0.0;
-            vector[n] contributions;
-            vector[n] means;
-            means = X*beta;
-            
-            for (index in 1:n)
-            {
-                contributions[index]= -1*(bernoulli_logit_lpmf(y[index] | means[index]));
-            }
+    model
+    {
+        target += mixture_lpmf(y|X,n,k,beta,scaled_var);
+    }
 
-            log_full_model = bernoulli_logit_lpmf(y | means);
-            log_prior = double_exponential_lpdf(beta | 0, scaled_var);
-            return (log_sum_exp(contributions) + log_prior + log_full_model);
-            }
-        }
-
-        data
-        {
-            int n;
-            int k;
-            int<lower=0, upper=1> y[n];
-            matrix [n,k] X;
-            real scaled_var;
-            
-        }
-
-        parameters
-        {
-            vector[k] beta;
-        }
-
-        model
-        {
-            target += mixture_lpmf(y|X,n,k,beta,scaled_var);
-        }
-
-        """
-        return model_mixture
-
+    """
+    return model_mixture

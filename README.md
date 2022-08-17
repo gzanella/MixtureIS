@@ -1,5 +1,5 @@
 # MixtureIS
-Codes for replicating some of the experiments of the paper _Bayesian Cross-Validation and Importance Sampling_. 
+Codes for replicating some of the experiments of the paper _Robust leave-one-out cross-validation for high-dimensional Bayesian models_ by Luca Silva and Giacomo Zanella.
 
 - For a pedagogical walk trough of the construction of the estimator read [**tutorial.md**](https://github.com/luchinoprince/MixtureIS/blob/main/tutorial.md). 
 
